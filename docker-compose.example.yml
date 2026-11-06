@@ -1,6 +1,6 @@
 services:
   elegoo-web:
-    image: ghcr.io/runnane/elegoo-web:latest
+    image: ghcr.io/heistergand/elegoo-web:latest
     # build: .  # Uncomment to build locally instead of pulling
     container_name: elegoo-web
     restart: unless-stopped
@@ -25,7 +25,8 @@ services:
       # PROGRESS_INTERVAL: "25"          # Notify every N% (default: 25)
 
       # ── Optional: AI print monitoring ─────────────────
-      # AI_ENABLED: "false"              # Enable AI monitoring (default: false)
+      AI_ENABLED: "false"              # Enable AI monitoring (default: false)
+      # AI_WORKER_URL: "http://ai-worker:8090" # Required for local AI; use docker-compose.ai.example.yml
       # AI_LOCAL_ENABLED: "true"         # Local CLIP/SigLIP model (default: true)
       # AI_LOCAL_MODEL: "Xenova/siglip-base-patch16-224"
       # AI_VLM_ENABLED: "true"           # Vision LLM analysis (default: FALSE — opt-in;
@@ -67,15 +68,6 @@ services:
 
       # Option C: Single host path for everything (easy to access data)
       - ./elegoo-data:/app/data
-
-      # The local CLIP model cache. NOT under /app/data — transformers.js resolves
-      # `.cache/models` relative to the working directory, so it lands at /app/.cache.
-      #
-      # Keep this if AI_LOCAL_ENABLED is true, or the model is re-downloaded from scratch
-      # every time the container is recreated: ~200 MB and about 95 seconds on a decent
-      # connection, considerably worse on a Pi. Measured, not estimated (ELEG-69).
-      # Harmless to leave mounted when local AI is off — it just stays empty.
-      - ./elegoo-model-cache:/app/.cache
 
 # volumes:
 #   elegoo-data:

@@ -21,6 +21,7 @@ import type { ServiceConfig } from './config.js';
 import type { StateStore, PrintEvent } from './state-store.js';
 import { getSnapshot } from './rest-api.js';
 import sharp from 'sharp';
+import { AIWorkerClient } from './ai-worker-client.js';
 import { getLogger } from './logger.js';
 
 const log = getLogger('AI');
@@ -240,73 +241,32 @@ const VLM_USER_PROMPT = 'Analyze this 3D print camera image for print quality is
 
 // ---- Local CLIP Analyzer ----
 
-type CLIPClassifier = (
-  image: Blob,
-  labels: string[],
-) => Promise<Array<{ label: string; score: number }>>;
-
 class LocalAnalyzer {
-  private classifier: CLIPClassifier | null = null;
-  private loading = false;
-  private _ready = false;
-  private model: string;
+  private worker: AIWorkerClient;
 
-  constructor(model: string) {
-    this.model = model;
+  constructor(model: string, url: string) {
+    this.worker = new AIWorkerClient(url, model);
   }
 
   get ready(): boolean {
-    return this._ready;
+    return this.worker.state === 'ready';
   }
-
+  get state(): string {
+    return this.worker.state;
+  }
+  get error(): string | null {
+    return this.worker.error;
+  }
   async initialize(): Promise<void> {
-    if (this._ready || this.loading) return;
-    this.loading = true;
-
-    try {
-      log.info(`Loading model ${this.model}...`);
-      const start = Date.now();
-
-      // Dynamic import to avoid loading transformers.js at module level
-      const { pipeline, env } = await import('@huggingface/transformers');
-
-      // Configure for Node.js server usage
-      env.useBrowserCache = false;
-      env.allowLocalModels = true;
-      env.cacheDir = '.cache/models';
-
-      this.classifier = (await pipeline('zero-shot-image-classification', this.model, {
-        dtype: 'q8',
-        device: 'cpu',
-      })) as unknown as CLIPClassifier;
-
-      this._ready = true;
-      log.info(`Model loaded in ${Date.now() - start}ms`);
-    } catch (err) {
-      log.error('Failed to load model:', (err as Error).message);
-      this.loading = false;
-    }
+    await this.worker.refresh();
   }
 
   async analyze(jpeg: Buffer, labelConfigs: AILabelConfig[]): Promise<AIAnalysis> {
     const start = Date.now();
 
-    if (!this.classifier) {
-      return {
-        timestamp: start,
-        source: 'local',
-        status: 'ok',
-        confidence: 0,
-        issues: [],
-        description: 'CLIP model not loaded yet',
-        durationMs: Date.now() - start,
-      };
-    }
-
     try {
       const labels = labelConfigs.map((c) => c.label);
-      const blob = new Blob([new Uint8Array(jpeg)], { type: 'image/jpeg' });
-      const rawResults = await this.classifier(blob, labels);
+      const rawResults = await this.worker.classify(jpeg, labels);
 
       // SigLIP uses per-label sigmoid scores (each 0-1 independently).
       // Normalize to a relative distribution (like CLIP softmax) so that
@@ -521,6 +481,7 @@ const MAX_HISTORY = 100;
 export class AIMonitor extends EventEmitter {
   private analysisHistory: AIAnalysis[] = [];
   private localAnalyzer: LocalAnalyzer;
+  private workerPoll: ReturnType<typeof setInterval> | null = null;
   private motionDetector = new MotionDetector();
   private timer: ReturnType<typeof setInterval> | null = null;
   private isPrinting = false;
@@ -536,7 +497,10 @@ export class AIMonitor extends EventEmitter {
     private config: ServiceConfig,
   ) {
     super();
-    this.localAnalyzer = new LocalAnalyzer(config.aiLocalModel);
+    this.localAnalyzer = new LocalAnalyzer(
+      config.aiLocalModel,
+      config.aiWorkerUrl ?? 'http://127.0.0.1:8090',
+    );
     this.labelConfigPath = join(config.dataDir, 'ai-labels.json');
 
     // Listen for print state changes
@@ -760,6 +724,8 @@ export class AIMonitor extends EventEmitter {
       localEnabled: this.config.aiLocalEnabled,
       localModel: this.config.aiLocalModel,
       localReady: this.localAnalyzer.ready,
+      localState: this.localAnalyzer.state,
+      localError: this.localAnalyzer.error,
       intervalSec: this.config.aiIntervalSec,
       alertThreshold: this.config.aiAlertThreshold,
       alertCooldownSec: this.config.aiAlertCooldownSec,
@@ -837,6 +803,11 @@ export class AIMonitor extends EventEmitter {
       });
     }
 
+    if (this.config.aiLocalEnabled && !this.workerPoll) {
+      this.workerPoll = setInterval(() => void this.localAnalyzer.initialize(), 15_000);
+      this.workerPoll.unref();
+    }
+
     // If printer is already printing when we start, begin monitoring
     const ms = this.store.status?.machine_status?.status;
     if (ms === 2) {
@@ -845,6 +816,8 @@ export class AIMonitor extends EventEmitter {
   }
 
   stop(): void {
+    if (this.workerPoll) clearInterval(this.workerPoll);
+    this.workerPoll = null;
     this._running = false;
     this.stopAnalysisLoop();
   }

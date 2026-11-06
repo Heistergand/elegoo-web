@@ -1,0 +1,2 @@
+# Keep Linux containers, shell scripts and formatter checks consistent on Windows.
+* text=auto eol=lf
