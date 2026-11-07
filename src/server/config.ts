@@ -62,6 +62,8 @@ export interface ServiceConfig {
   aiVlmModel: string;
   aiLocalEnabled: boolean;
   aiLocalModel: string;
+  /** HTTP endpoint of the optional CPU inference worker. */
+  aiWorkerUrl?: string;
   aiIntervalSec: number;
   aiAlertThreshold: number;
   aiAlertCooldownSec: number;
@@ -198,6 +200,7 @@ export function loadConfig(): ServiceConfig {
     aiVlmModel: env('AI_VLM_MODEL', 'llava'),
     aiLocalEnabled: env('AI_LOCAL_ENABLED', 'true') !== 'false',
     aiLocalModel: env('AI_LOCAL_MODEL', 'Xenova/siglip-base-patch16-224'),
+    aiWorkerUrl: env('AI_WORKER_URL', 'http://127.0.0.1:8090'),
     aiIntervalSec: parseInt(env('AI_INTERVAL', '60'), 10) || 60,
     aiAlertThreshold: parseInt(env('AI_ALERT_THRESHOLD', '3'), 10) || 3,
     aiAlertCooldownSec: parseInt(env('AI_ALERT_COOLDOWN', '300'), 10) || 300,

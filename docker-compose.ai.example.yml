@@ -1,0 +1,100 @@
+name: elegoo-slim
+services:
+  elegoo-web:
+    image: elegoo-web-slim:latest
+    # Build locally; use a published registry image and change pull_policy to pull instead.
+    build:
+      context: .
+      target: base
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "8088:8088"   # Web UI + API + WebSocket
+      # - "7125:7125"   # Moonraker compatibility API
+    environment:
+      # ── Required ──────────────────────────────────────
+      PRINTER_IP: "192.168.1.150"
+
+      # ── Optional: Printer ─────────────────────────────
+      PRINTER_PASSWORD: "123456"       # Access code (default: 123456)
+      SERVICE_PORT: "8088"             # Web UI port (default: 8088)
+      # MOONRAKER_PORT: "7125"           # Moonraker compat port (default: 7125)
+      # BIND_ADDRESS: "0.0.0.0"          # Interface both servers bind to (default: 0.0.0.0)
+      CAMERA_ENABLED: "true"           # Camera proxy (default: true)
+      CONNECTION_PRESETS_API: "false"  # Disable changes to saved printer connections via API
+      # CAMERA_URL: ""                   # Override camera URL (default: http://<PRINTER_IP>:8080)
+
+      # ── Optional: Telegram notifications ──────────────
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+      # PROGRESS_INTERVAL: "25"          # Notify every N% (default: 25)
+
+      # ── Optional: AI print monitoring ─────────────────
+      AI_ENABLED: "true"
+      AI_LOCAL_ENABLED: "true"
+      AI_WORKER_URL: "http://ai-worker:8090"
+      # AI_VLM_ENABLED: "true"           # Vision LLM analysis (default: FALSE — opt-in;
+      #                                  # AI_ENABLED alone does not turn this on)
+      # AI_VLM_PROVIDER: "ollama"        # ollama or openai (default: ollama)
+      # AI_VLM_BASE_URL: "http://host.docker.internal:11434"
+      #   ⚠ On LINUX, host.docker.internal does not resolve unless you also uncomment the
+      #   `extra_hosts` block below — it is provided automatically only on Docker Desktop
+      #   (macOS/Windows). Without it the VLM fails with a name-resolution error that
+      #   looks nothing like the actual cause. A plain host IP works too.
+      # AI_VLM_MODEL: "llava"
+      # AI_VLM_API_KEY: ""               # Required for openai provider
+      # AI_INTERVAL: "60"                # Seconds between AI checks (default: 60)
+      # AI_ALERT_THRESHOLD: "3"          # Consecutive failures before alert (default: 3)
+      # AI_ALERT_COOLDOWN: "300"         # Seconds between alerts (default: 300)
+
+      # ── Optional: Data persistence ────────────────────
+      DATA_DIR: /app/data               # Data directory (default: ./data)
+
+    # Needed on Linux for AI_VLM_BASE_URL=http://host.docker.internal:… (see above).
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+    volumes:
+      # Option A: Single named volume (simplest)
+      #- elegoo-data:/app/data
+
+      # Option B: Per-directory host paths (uncomment and remove Option A)
+      # - ./data/reports:/app/data/reports          # Print reports + snapshots
+      # - ./data/gcode-cache:/app/data/gcode-cache  # Downloaded gcode files
+      # - ./data/logs:/app/data/logs                # MQTT capture logs
+      #
+      # Directories only. Do NOT bind the individual files (state.json,
+      # moonraker-db.json): Docker creates a DIRECTORY for a bind source that does not
+      # exist yet, so the service finds a directory where it expects a file. It does not
+      # crash — the container stays Up and the UI works — it just logs
+      # `EISDIR: illegal operation on a directory` and silently never persists anything
+      # (ELEG-76). Option C avoids the question entirely.
+
+      # Option C: Single host path for everything (easy to access data)
+      - ./elegoo-data:/app/data
+
+# volumes:
+#   elegoo-data:
+
+  ai-worker:
+    # No profile: this complete configuration starts the worker by default.
+    image: elegoo-web-ai:latest
+    build:
+      context: .
+      target: ai-worker
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      AI_LOCAL_MODEL: "Xenova/siglip-base-patch16-224"
+      AI_MODEL_CACHE: /models
+    # Internal service only: do not publish this port to the host.
+    expose:
+      - "8090"
+    volumes:
+      - ./elegoo-model-cache/models:/models
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 3

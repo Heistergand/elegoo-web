@@ -1,6 +1,6 @@
 name: Publish image
 
-# Publishes ghcr.io/runnane/elegoo-web (ELEG-69).
+# Publishes the repository base image and its optional -ai worker image.
 #
 # WHY THIS EXISTS
 #
@@ -44,6 +44,13 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: base
+            suffix: ''
+          - target: ai-worker
+            suffix: '-ai'
     permissions:
       contents: read
       # Required to push to ghcr.io. Nothing else here needs a token.
@@ -74,7 +81,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ matrix.suffix }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -83,6 +90,7 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          target: ${{ matrix.target }}
           # arm64 as well as amd64: this service runs next to a printer, and that host
           # is very often a Raspberry Pi. Built under QEMU, so it is slow — but a user
           # on a Pi cannot use an amd64-only image at all.
@@ -90,8 +98,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
           # So the image can say which build it is — the UI renders this as x.y.z+aa
           # (ELEG-48), and it is the first thing to ask when a stranger files an issue.
           build-args: |
@@ -113,6 +121,6 @@ jobs:
             echo "**public** in its own settings, which is separate from repo access:"
             echo
             echo '```bash'
-            echo "docker pull ghcr.io/${{ github.repository }}:latest"
+            echo "docker pull ghcr.io/${{ github.repository }}${{ matrix.suffix }}:latest"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

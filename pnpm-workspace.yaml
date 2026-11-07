@@ -1,3 +1,6 @@
+packages:
+  - 'src/ai-worker'
+
 # pnpm settings. These lived in package.json's "pnpm" field until pnpm 11 stopped
 # reading it ("The `pnpm` field in package.json is no longer read by pnpm"), which
 # left the effective overrides empty while pnpm-lock.yaml still recorded them — and
@@ -36,7 +39,7 @@ overrides:
   # @huggingface/transformers 4.2.0 → onnxruntime-{node,web}. These two DO cross their
   # parent's declared range (onnxruntime-node wants adm-zip ^0.5.16), so they are the
   # only entries here that upstream has not itself blessed. Reached solely through the
-  # dynamic import in src/server/ai-monitor.ts, i.e. only when AI_PROVIDER selects the
+  # import in src/ai-worker/index.ts, i.e. only in the optional worker for the
   # local CLIP path — which no test covers. Verified by importing the package.
   adm-zip: '>=0.6.0'
   protobufjs: '>=7.6.5'
@@ -78,7 +81,7 @@ allowBuilds:
   # postinstall verifies the platform binary. tsx needs it at runtime.
   esbuild: true
   # postinstall fetches its native provider libraries. Needed for the local CLIP
-  # path in src/server/ai-monitor.ts.
+  # path in src/ai-worker/index.ts.
   onnxruntime-node: true
   # Its postinstall would install the git hooks. The `prepare` script already does
   # that, and pnpm 10 never ran this script either, so false changes nothing.

@@ -6,6 +6,9 @@ raw/
 dist/
 data/
 .env
+# Local deployment configuration may contain printer passwords and API keys.
+/compose.yaml
+/compose.ai.yaml
 .cache/
 
 # Claude Code — per-machine state only.
@@ -17,3 +20,4 @@ data/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/scheduled_tasks.json
+.pnpm-store/
