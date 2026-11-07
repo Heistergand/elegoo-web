@@ -1,34 +1,38 @@
+name: elegoo-slim
 services:
   elegoo-web:
-    image: ghcr.io/heistergand/elegoo-web:latest
-    # build: .  # Uncomment to build locally instead of pulling
-    container_name: elegoo-web
+    image: elegoo-web-slim:latest
+    # Build locally; use a published registry image and change pull_policy to pull instead.
+    build:
+      context: .
+      target: base
+    pull_policy: never
     restart: unless-stopped
     ports:
       - "8088:8088"   # Web UI + API + WebSocket
-      - "7125:7125"   # Moonraker compatibility API
+      # - "7125:7125"   # Moonraker compatibility API
     environment:
       # ── Required ──────────────────────────────────────
       PRINTER_IP: "192.168.1.150"
 
       # ── Optional: Printer ─────────────────────────────
-      # PRINTER_PASSWORD: "123456"       # Access code (default: 123456)
-      # SERVICE_PORT: "8088"             # Web UI port (default: 8088)
+      PRINTER_PASSWORD: "123456"       # Access code (default: 123456)
+      SERVICE_PORT: "8088"             # Web UI port (default: 8088)
       # MOONRAKER_PORT: "7125"           # Moonraker compat port (default: 7125)
       # BIND_ADDRESS: "0.0.0.0"          # Interface both servers bind to (default: 0.0.0.0)
-      # CAMERA_ENABLED: "true"           # Camera proxy (default: true)
+      CAMERA_ENABLED: "true"           # Camera proxy (default: true)
+      CONNECTION_PRESETS_API: "false"  # Disable changes to saved printer connections via API
       # CAMERA_URL: ""                   # Override camera URL (default: http://<PRINTER_IP>:8080)
 
       # ── Optional: Telegram notifications ──────────────
-      # TELEGRAM_BOT_TOKEN: ""
-      # TELEGRAM_CHAT_ID: ""
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
       # PROGRESS_INTERVAL: "25"          # Notify every N% (default: 25)
 
       # ── Optional: AI print monitoring ─────────────────
       AI_ENABLED: "true"
       AI_LOCAL_ENABLED: "true"
       AI_WORKER_URL: "http://ai-worker:8090"
-      AI_LOCAL_MODEL: "${AI_LOCAL_MODEL:-Xenova/siglip-base-patch16-224}"
       # AI_VLM_ENABLED: "true"           # Vision LLM analysis (default: FALSE — opt-in;
       #                                  # AI_ENABLED alone does not turn this on)
       # AI_VLM_PROVIDER: "ollama"        # ollama or openai (default: ollama)
@@ -44,7 +48,7 @@ services:
       # AI_ALERT_COOLDOWN: "300"         # Seconds between alerts (default: 300)
 
       # ── Optional: Data persistence ────────────────────
-      # DATA_DIR: "./data"               # Data directory (default: ./data)
+      DATA_DIR: /app/data               # Data directory (default: ./data)
 
     # Needed on Linux for AI_VLM_BASE_URL=http://host.docker.internal:… (see above).
     # extra_hosts:
@@ -73,13 +77,15 @@ services:
 #   elegoo-data:
 
   ai-worker:
-    image: ghcr.io/heistergand/elegoo-web-ai:latest
-    # build:
-    #   context: .
-    #   target: ai-worker
+    # No profile: this complete configuration starts the worker by default.
+    image: elegoo-web-ai:latest
+    build:
+      context: .
+      target: ai-worker
+    pull_policy: never
     restart: unless-stopped
     environment:
-      AI_LOCAL_MODEL: "${AI_LOCAL_MODEL:-Xenova/siglip-base-patch16-224}"
+      AI_LOCAL_MODEL: "Xenova/siglip-base-patch16-224"
       AI_MODEL_CACHE: /models
     # Internal service only: do not publish this port to the host.
     expose:
