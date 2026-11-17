@@ -5,10 +5,21 @@ node_modules
 raw/
 dist/
 data/
+
+# Environment and secrets
 .env
-# Local deployment configuration may contain printer passwords and API keys.
-/compose.yaml
-/compose.ai.yaml
+.env.*
+!.env.example
+
+# Persistent data
+/elegoo-data/
+/elegoo-data-slim/
+/elegoo-data-test/
+/elegoo-model-cache/
+
+# Local backups
+*.bak
+*.backup
 .cache/
 
 # Claude Code — per-machine state only.
