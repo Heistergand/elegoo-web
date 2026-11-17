@@ -1,0 +1,28 @@
+# Local Windows/Linux smoke test: TEST-NET printer and disabled integrations.
+name: elegoo-slim-sandbox
+services:
+  elegoo-web:
+    image: elegoo-web:slim
+    build:
+      context: .
+      target: base
+    pull_policy: never
+    ports:
+      - "127.0.0.1:18088:8088"
+      - "127.0.0.1:17125:7125"
+    environment:
+      PRINTER_IP: "192.0.2.99"
+      CAMERA_ENABLED: "false"
+      AI_ENABLED: "false"
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+      DATA_DIR: /app/data
+    volumes:
+      - sandbox-data:/app/data
+    networks:
+      - sandbox
+networks:
+  sandbox:
+    driver: bridge
+volumes:
+  sandbox-data:

@@ -64,7 +64,7 @@ docker run -d \
   -p 7125:7125 \
   -e PRINTER_IP=192.168.1.150 \
   -v elegoo-data:/app/data \
-  ghcr.io/runnane/elegoo-web:latest
+  ghcr.io/heistergand/elegoo-web:latest
 ```
 
 Web UI: `http://localhost:8088` · Moonraker API: `http://localhost:7125`
@@ -80,7 +80,7 @@ docker run -d \
   -p 7125:7125 \
   -e PRINTER_IP=192.168.1.150 \
   -v ./elegoo-data:/app/data \
-  ghcr.io/runnane/elegoo-web:latest
+  ghcr.io/heistergand/elegoo-web:latest
 ```
 
 Everything then appears under `./elegoo-data` — `reports/`, `gcode-cache/`, `logs/`,
@@ -94,15 +94,79 @@ Everything then appears under `./elegoo-data` — `reports/`, `gcode-cache/`, `l
 
 ### Docker Compose
 
-Copy the example file and edit your printer IP:
+Choose **one** complete example and copy it to `compose.yaml`:
 
 ```bash
-cp docker-compose.example.yml docker-compose.yml
-# Edit PRINTER_IP in docker-compose.yml
+# No AI: only the lean web-service image is downloaded.
+cp docker-compose.example.yml compose.yaml
+
+# OR local CPU AI: adds a separate inference worker and model cache.
+cp docker-compose.ai.example.yml compose.yaml
+
+vim compose.yaml  # Set PRINTER_IP and any optional settings.
+docker compose pull
 docker compose up -d
 ```
 
-See [`docker-compose.example.yml`](docker-compose.example.yml) for all available environment variables (Telegram, AI monitoring, camera, etc.).
+Use one Compose file in the installation directory; do not leave an older
+`docker-compose.yml` alongside `compose.yaml`. No profiles or extra flags are needed.
+The base image contains no Transformers/ONNX runtime. The AI example adds
+`ghcr.io/heistergand/elegoo-web-ai`, with no published worker port. Both images should
+use the same release tag when pinning versions. Until this branch is merged and the
+publish workflow completes, build locally rather than pulling these new images.
+
+The base service retains the camera overlay, motion detection, notifications, and
+all printer APIs. Local classification is performed by a CPU worker over the private
+Compose network. Only the base service connects to printer MQTT. The worker reports
+loading/ready/error through `/v1/health`; the UI also reports an unreachable worker.
+It never receives printer credentials. Do not expose its unauthenticated port publicly.
+
+Model weights are downloaded on worker startup, not included in either image.
+`./elegoo-model-cache/models` persists them across container recreation. This matches
+the old container's `./elegoo-model-cache` mount at `/app/.cache`: existing cached
+models can be reused without moving them. Keep this directory when upgrading.
+Set `AI_LOCAL_MODEL` in the Compose `.env` file to change the model in **both** services.
+After a model download failure, check worker logs and restart the worker to retry.
+
+For external VLM **without local inference**, use the no-AI example, set
+`AI_ENABLED: "true"`, `AI_LOCAL_ENABLED: "false"`, and `AI_VLM_ENABLED: "true"`, then
+configure the existing provider settings. No local worker/model download is required.
+Setting `AI_ENABLED` alone no longer installs or starts a local model: choose the AI
+example for that. Existing non-Docker installations also need a worker for local AI:
+run `AI_MODEL_CACHE=./data/models pnpm ai:worker` in a separate process and configure
+`AI_WORKER_URL` (default `http://127.0.0.1:8090`).
+
+When switching an existing AI installation off, select the base example and run
+`docker compose up -d --remove-orphans` to stop the old worker as well. This does not
+remove its cached image or model files; they can be kept for later use.
+
+Local development and isolated verification (no real printer):
+
+```bash
+docker build -t elegoo-web:slim --target base .
+docker build -t elegoo-web-ai:slim --target ai-worker .
+docker build -t elegoo-web:slim-checks --target checks .
+docker run --rm --network none elegoo-web:slim-checks
+```
+
+A ready-to-use sandbox configuration builds the base image and uses a TEST-NET
+printer address, disabled camera/Telegram/AI, separate data volume, and loopback ports:
+
+```bash
+docker compose -f compose.sandbox.yaml up -d --build
+# Open http://localhost:18088 (printer disconnected is expected).
+docker compose -f compose.sandbox.yaml down
+```
+
+For a local Compose build, uncomment `build` in the chosen example and use
+`docker compose up -d --build --pull never`. For tests use a TEST-NET printer address,
+disable Telegram, and publish test ports bound to loopback. Never run a second MQTT
+client against the live printer. Windows Docker Desktop supports these Linux images;
+Git Bash users may need `MSYS_NO_PATHCONV=1` when passing Linux paths to `docker run`.
+
+See the two examples for all optional settings. The CI publish matrix builds the base
+and AI images independently for amd64 and arm64. Full development installs include
+the worker dependencies; production image installs are filtered per workspace package.
 
 ### Image tags
 
@@ -112,29 +176,25 @@ See [`docker-compose.example.yml`](docker-compose.example.yml) for all available
 | `x.y.z`, `x.y` | a specific release, pinned |
 
 Images are built for **linux/amd64 and linux/arm64**, so a Raspberry Pi next to the
-printer works. Each image carries its own build stamp — the version shows in the web UI's
+printer works. The base image carries its build stamp — the version shows in the web UI's
 status dropdown, which is the first thing to quote when reporting a problem.
 
 ### Build Locally
 
 ```bash
-docker build -t ghcr.io/runnane/elegoo-web:local .
-docker run -d -p 8088:8088 -p 7125:7125 -e PRINTER_IP=192.168.1.150 ghcr.io/runnane/elegoo-web:local
+docker build -t ghcr.io/heistergand/elegoo-web:local .
+docker run -d -p 8088:8088 -p 7125:7125 -e PRINTER_IP=192.168.1.150 ghcr.io/heistergand/elegoo-web:local
 ```
 
 A locally built image reports its version as `unknown`, which is expected: the stamp is
 supplied by the publish workflow, not by `docker build`.
 
-### If you enable local AI (`AI_LOCAL_ENABLED`)
+### Local AI model cache
 
-Mount a volume at **`/app/.cache`** as well. The CLIP model cache lives there, not under
-`/app/data`, because transformers.js resolves its cache path relative to the working
-directory. Without that volume the model is re-downloaded every time the container is
-recreated — about 200 MB and roughly 95 seconds here, and a good deal slower on a Pi.
-
-```bash
--v elegoo-model-cache:/app/.cache
-```
+The optional worker stores models at `/models`; the AI Compose example mounts
+`./elegoo-model-cache/models` there. Keep this volume across container recreation
+so the worker does not download the model again. The base container needs no model
+cache mount.
 
 ### Environment Variables
 
@@ -162,7 +222,8 @@ recreated — about 200 MB and roughly 95 seconds here, and a good deal slower o
 | `AI_VLM_BASE_URL` | `http://localhost:11434` | VLM API endpoint (ollama's default port) |
 | `AI_VLM_MODEL` | `llava` | VLM model name |
 | `AI_LOCAL_ENABLED` | `true` | Enable local SigLIP zero-shot classification |
-| `AI_LOCAL_MODEL` | `Xenova/siglip-base-patch16-224` | Local classification model |
+| `AI_WORKER_URL` | `http://127.0.0.1:8090` | Optional local-inference worker endpoint; Compose AI example uses `http://ai-worker:8090` |
+| `AI_LOCAL_MODEL` | `Xenova/siglip-base-patch16-224` | Local classification model; must match the worker |
 | `AI_INTERVAL` | `60` | Seconds between AI analysis |
 | `AI_ALERT_THRESHOLD` | `3` | Consecutive alerts before notification |
 | `AI_ALERT_COOLDOWN` | `300` | Seconds between alert notifications |

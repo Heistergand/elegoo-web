@@ -272,7 +272,7 @@ function renderConfigInfo(): string {
     : '<span class="ai-config-off">✗ VLM disabled</span>';
 
   const local = aiConfig.localEnabled
-    ? `<span class="ai-config-on">✓ CLIP</span> <span class="ai-config-detail">${escapeHtml(String(aiConfig.localModel))}${aiConfig.localReady ? '' : ' (loading...)'}</span>`
+    ? `<span class="ai-config-on">✓ CLIP</span> <span class="ai-config-detail">${escapeHtml(String(aiConfig.localModel))}${aiConfig.localReady ? '' : ` (${escapeHtml(String(aiConfig.localState ?? 'unavailable'))})`}${aiConfig.localError ? ` — ${escapeHtml(String(aiConfig.localError))}` : ''}</span>`
     : '<span class="ai-config-off">✗ Local CLIP disabled</span>';
 
   const interval = `every ${aiConfig.intervalSec}s`;

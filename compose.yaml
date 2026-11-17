@@ -1,0 +1,49 @@
+name: elegoo-slim
+services:
+  elegoo-web-slim:
+    image: elegoo-web-slim:latest
+    build:
+      context: .
+      target: base
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "18089:8088"
+    environment:
+      PRINTER_IP: "${PRINTER_IP:?PRINTER_IP fehlt}"
+      PRINTER_PASSWORD: "${PRINTER_PASSWORD:?PRINTER_PASSWORD fehlt}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      TELEGRAM_ALLOWED_CHAT_IDS: "${TELEGRAM_ALLOWED_CHAT_IDS:-}"
+      CAMERA_ENABLED: "true"
+      SERVICE_PORT: "8088"
+      AI_ENABLED: "${AI_ENABLED:-false}"
+      AI_LOCAL_ENABLED: "${AI_LOCAL_ENABLED:-false}"
+      AI_WORKER_URL: "http://ai-worker:8090"
+      CONNECTION_PRESETS_API: "false"
+      DATA_DIR: /app/data
+
+    volumes:
+      - ./elegoo-data-slim:/app/data
+
+  ai-worker:
+    profiles: ["ai"] # <-- this prevents loading or building if not using `--profile ai` in docker compose command
+    image: elegoo-web-ai:latest
+    build:
+      context: .
+      target: ai-worker
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      AI_LOCAL_MODEL: "Xenova/siglip-base-patch16-224"
+      AI_MODEL_CACHE: /models
+    expose:
+      - "8090"        # intern only
+    volumes:
+      - ./elegoo-model-cache/models:/models
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 3

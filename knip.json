@@ -6,8 +6,15 @@
     "src/server/index.ts",
     "scripts/check-landing-subject.ts",
     "src/__tests__/**/*.test.ts",
-    "src/__tests__/setup/*.ts"
+    "src/__tests__/setup/*.ts",
+    "src/ai-worker/index.ts"
   ],
-  "project": ["src/**/*.ts", "scripts/**/*.ts", "*.config.ts"],
-  "include": ["files"]
+  "project": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "*.config.ts"
+  ],
+  "include": [
+    "files"
+  ]
 }
